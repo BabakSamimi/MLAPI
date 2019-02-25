@@ -16,15 +16,12 @@ namespace MLAPI
     [AddComponentMenu("MLAPI/NetworkedObject", -99)]
     public sealed class NetworkedObject : MonoBehaviour
     {
+        internal static readonly Dictionary<ulong, NetworkedObject> PendingSoftSyncObjects = new Dictionary<ulong, NetworkedObject>();
         internal static readonly List<NetworkedBehaviour> NetworkedBehaviours = new List<NetworkedBehaviour>();
 
         private void OnValidate()
         {
-            if (string.IsNullOrEmpty(NetworkedPrefabName))
-            {
-                if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("The NetworkedObject " + gameObject.name + " does not have a NetworkedPrefabName. It has been set to the gameObject name");
-                NetworkedPrefabName = gameObject.name;
-            }
+            // TODO: Set defaults
         }
 
         /// <summary>
@@ -52,15 +49,8 @@ namespace MLAPI
             }
         }
         private uint? _ownerClientId = null;
-        /// <summary>
-        /// The name of the NetworkedPrefab
-        /// </summary>
-        [Tooltip("The prefab name is the name that identifies this prefab. It has to not be the same as any other prefabs that are registered with the MLAPI and it has to be the same across projects if multiple projects are used.")]
-        public string NetworkedPrefabName = string.Empty;
-        /// <summary>
-        /// The hash used to identify the NetworkedPrefab, a hash of the NetworkedPrefabName
-        /// </summary>
-        public ulong NetworkedPrefabHash => SpawnManager.GetPrefabHash(NetworkedPrefabName);
+        
+        public ulong ObjectCreationToken;
         [Obsolete("Use IsPlayerObject instead", false)]
         public bool isPlayerObject => IsPlayerObject;
         /// <summary>
@@ -91,15 +81,6 @@ namespace MLAPI
         /// Gets if the object has yet been spawned across the network
         /// </summary>
         public bool IsSpawned { get; internal set; }
-        internal bool? destroyWithScene = null;
-
-        /// <summary>
-        /// When enabled this gameobject will not be spawned on the client until the scene it was originally spawned inside at the server is fully loaded on the client.
-        /// </summary>
-        [Tooltip("When enabled this gameobject will not be spawned on the client until the scene it was originally spawned inside at the server is fully loaded on the client.")]
-        public bool SceneDelayedSpawn = false;
-
-        internal uint sceneSpawnedInIndex = 0;
 
         public delegate bool ObserverDelegate(uint clientId);
 
@@ -109,7 +90,7 @@ namespace MLAPI
         public ObserverDelegate CheckObjectVisibility = null;
         
         /// <summary>
-        /// Wheter or not to destroy this object if it's owner is destroyed.
+        /// Whether or not to destroy this object if it's owner is destroyed.
         /// If false, the objects ownership will be given to the server.
         /// </summary>
         public bool DontDestroyWithOwner;
@@ -153,41 +134,7 @@ namespace MLAPI
                 // Send spawn call
                 observers.Add(clientId);
                 
-                using (PooledBitStream stream = PooledBitStream.Get())
-                {
-                    using (PooledBitWriter writer = PooledBitWriter.Get(stream))
-                    {
-                        writer.WriteBool(false);
-                        writer.WriteUInt32Packed(NetworkId);
-                        writer.WriteUInt32Packed(OwnerClientId);
-                        writer.WriteUInt64Packed(NetworkedPrefabHash);
-
-                        writer.WriteBool(destroyWithScene == null ? true : destroyWithScene.Value);
-                        writer.WriteBool(SceneDelayedSpawn);
-                        writer.WriteUInt32Packed(sceneSpawnedInIndex);
-
-                        writer.WriteSinglePacked(transform.position.x);
-                        writer.WriteSinglePacked(transform.position.y);
-                        writer.WriteSinglePacked(transform.position.z);
-
-                        writer.WriteSinglePacked(transform.rotation.eulerAngles.x);
-                        writer.WriteSinglePacked(transform.rotation.eulerAngles.y);
-                        writer.WriteSinglePacked(transform.rotation.eulerAngles.z);
-
-                        writer.WriteBool(payload != null);
-                        
-                        if (payload != null)
-                        {
-                            writer.WriteInt32Packed((int)payload.Length);
-                        }
-
-                        WriteNetworkedVarData(stream, clientId);
-
-                        if (payload != null) stream.CopyFrom(payload);
-
-                        InternalMessageHandler.Send(clientId, MLAPIConstants.MLAPI_ADD_OBJECT, "MLAPI_INTERNAL", stream, SecuritySendFlags.None, null);
-                    }
-                }
+                // TODO: Send show call
             }
         }
 
@@ -207,17 +154,8 @@ namespace MLAPI
             {
                 // Send destroy call
                 observers.Remove(clientId);
-
-
-                using (PooledBitStream stream = PooledBitStream.Get())
-                {
-                    using (PooledBitWriter writer = PooledBitWriter.Get(stream))
-                    {
-                        writer.WriteUInt32Packed(NetworkId);
-
-                        InternalMessageHandler.Send(MLAPIConstants.MLAPI_DESTROY_OBJECT, "MLAPI_INTERNAL", stream, SecuritySendFlags.None, null);
-                    }
-                }
+                
+                // TODO: Send hide call
             }
         }
         

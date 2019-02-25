@@ -123,6 +123,11 @@ namespace MLAPI.Configuration
         /// If you dynamically add prefabs at runtime, turn this OFF
         /// </summary>
         public bool ForceSamePrefabs = true;
+
+        // TODO: XML
+        // If true, replace on spawn
+        // Else, cross find
+        public bool UsePrefabSync = false;
         /// <summary>
         /// Decides how many bytes to use for Rpc messaging. Leave this to 2 bytes unless you are facing hash collisions
         /// </summary>

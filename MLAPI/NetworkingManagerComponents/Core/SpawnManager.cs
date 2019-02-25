@@ -29,8 +29,7 @@ namespace MLAPI.Components
         /// </summary>
         /// <param name="position">The position to spawn the object at</param>
         /// <param name="rotation">The rotation to spawn the object with</param>
-        /// <param name="disabled">Whether or not the object should be disabled, only true when spawning a scene delayed object</param>
-        public delegate NetworkedObject SpawnHandlerDelegate(Vector3 position, Quaternion rotation, bool disabled);
+        public delegate NetworkedObject SpawnHandlerDelegate(Vector3 position, Quaternion rotation);
         /// <summary>
         /// The delegate used when destroying networked objects
         /// </summary>
@@ -283,6 +282,71 @@ namespace MLAPI.Components
                     netObjects[i].InvokeBehaviourNetworkSpawn(null);
                     netObjects[i].destroyWithScene = true;
                 }
+            }
+        }
+
+        internal static NetworkedObject CreateLocalNetworkedObject(ulong creationToken, Vector3? position, Quaternion? rotation)
+        {
+            if (NetworkingManager.Singleton.NetworkConfig.UsePrefabSync)
+            {
+                // Replace objects
+                if (customSpawnHandlers.ContainsKey(creationToken))
+                {
+                    return customSpawnHandlers[creationToken](position.GetValueOrDefault(Vector3.zero), rotation.GetValueOrDefault(Quaternion.identity));
+                }
+                else
+                {
+                    GameObject prefab = NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs[GetNetworkedPrefabIndexOfHash(creationToken)].prefab;
+                    return ((position == null && rotation == null) ? MonoBehaviour.Instantiate(prefab) : MonoBehaviour.Instantiate(prefab, position.GetValueOrDefault(Vector3.zero), rotation.GetValueOrDefault(Quaternion.identity))).GetComponent<NetworkedObject>();
+                }
+            }
+            else
+            {
+                // SoftSync them by mapping
+            }
+        }
+
+        internal static void SpawnNetworkedObject(NetworkedObject netObject, uint networkId, uint ownerClientId, bool playerObject, Stream dataStream, bool readPayload, int payloadLength, bool readNetworkedVar)
+        {
+            if (netObject == null)
+            {
+                if (LogHelper.CurrentLogLevel <= LogLevel.Error) LogHelper.LogError("Cannot spawn null object");
+                return;
+            }
+
+            if (netObject.IsSpawned)
+            {
+                if (LogHelper.CurrentLogLevel <= LogLevel.Error) LogHelper.LogError("Cannot spawn already spawned object");
+                return;
+            }
+            
+            
+            if (readNetworkedVar) netObject.SetNetworkedVarData(dataStream);
+            
+            netObject.IsSpawned = true;
+
+            netObject.NetworkId = networkId;
+
+            netObject.OwnerClientId = ownerClientId;
+            netObject.IsPlayerObject = playerObject;
+
+            SpawnedObjects.Add(netObject.NetworkId, netObject);
+            SpawnedObjectsList.Add(netObject);
+            
+            if (playerObject && NetworkingManager.Singleton.IsServer) NetworkingManager.Singleton.ConnectedClients[ownerClientId].PlayerObject = netObject;
+
+            if (readPayload)
+            {
+                using (PooledBitStream payloadStream = PooledBitStream.Get())
+                {
+                    payloadStream.CopyUnreadFrom(dataStream, payloadLength);
+                    dataStream.Position += payloadLength;
+                    netObject.InvokeBehaviourNetworkSpawn(payloadStream);
+                }
+            }
+            else
+            {
+                netObject.InvokeBehaviourNetworkSpawn(null);
             }
         }
 
