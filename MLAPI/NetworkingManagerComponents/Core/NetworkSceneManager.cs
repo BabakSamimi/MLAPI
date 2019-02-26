@@ -93,12 +93,7 @@ namespace MLAPI.Components
         /// <param name="switchSceneGuid"></param>
         internal static void OnSceneSwitch(uint sceneIndex, Guid switchSceneGuid)
         {
-            if (!NetworkingManager.Singleton.NetworkConfig.EnableSceneSwitching)
-            {
-                if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("Scene switching is not enabled but was requested by the server");
-                return;
-            }
-            else if (!sceneIndexToString.ContainsKey(sceneIndex) || !registeredSceneNames.Contains(sceneIndexToString[sceneIndex]))
+            if (!sceneIndexToString.ContainsKey(sceneIndex) || !registeredSceneNames.Contains(sceneIndexToString[sceneIndex]))
             {
                 if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("Server requested a scene switch to a non registered scene");
                 return;
@@ -145,31 +140,40 @@ namespace MLAPI.Components
             {
                 SpawnManager.MarkSceneObjects();
                 NetworkedObject[] networkedObjects = MonoBehaviour.FindObjectsOfType<NetworkedObject>();
+                
                 for (int i = 0; i < networkedObjects.Length; i++)
                 {
-                    if (!networkedObjects[i].IsSpawned && networkedObjects[i].destroyWithScene == true)
+                    if (!networkedObjects[i].IsSpawned && networkedObjects[i].IsSceneObject == true)
                         networkedObjects[i].Spawn(null, true);
                 }
             }
             else
             {
-                SpawnManager.SpawnPendingObjectsForScene(CurrentActiveSceneIndex);
+                //SpawnManager.SpawnPendingObjectsForScene(CurrentActiveSceneIndex);
 
-                NetworkedObject[] netObjects = MonoBehaviour.FindObjectsOfType<NetworkedObject>();
-                for (int i = 0; i < netObjects.Length; i++)
+                if (NetworkingManager.Singleton.NetworkConfig.UsePrefabSync)
                 {
-                    if (netObjects[i].destroyWithScene == null)
+                    NetworkedObject[] netObjects = MonoBehaviour.FindObjectsOfType<NetworkedObject>();
+                    
+                    for (int i = 0; i < netObjects.Length; i++)
                     {
-                        if (SpawnManager.customDestroyHandlers.ContainsKey(netObjects[i].NetworkedPrefabHash))
+                        if (netObjects[i].IsSceneObject == null)
                         {
-                            SpawnManager.customDestroyHandlers[netObjects[i].NetworkedPrefabHash](netObjects[i]);
-                            SpawnManager.OnDestroyObject(netObjects[i].NetworkId, false);
-                        }
-                        else
-                        {
-                            MonoBehaviour.Destroy(netObjects[i].gameObject);
+                            if (SpawnManager.customDestroyHandlers.ContainsKey(netObjects[i].NetworkedPrefabHash))
+                            {
+                                SpawnManager.customDestroyHandlers[netObjects[i].NetworkedPrefabHash](netObjects[i]);
+                                SpawnManager.OnDestroyObject(netObjects[i].NetworkId, false);
+                            }
+                            else
+                            {
+                                MonoBehaviour.Destroy(netObjects[i].gameObject);
+                            }
                         }
                     }
+                }
+                else
+                {
+                    
                 }
             }
 
@@ -178,6 +182,7 @@ namespace MLAPI.Components
             {
                 OnClientSwitchSceneCompleted(NetworkingManager.Singleton.LocalClientId, switchSceneGuid);
             }
+            
             else if (NetworkingManager.Singleton.IsClient)
             {
                 using (PooledBitStream stream = PooledBitStream.Get())

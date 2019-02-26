@@ -60,7 +60,7 @@ namespace MLAPI.Configuration
         /// </summary>
         [SerializeField]
         [HideInInspector]
-        internal string PlayerPrefabName;
+        internal ulong PlayerPrefabHash;
         /// <summary>
         /// The size of the receive message buffer. This is the max message size including any MLAPI overheads.
         /// </summary>
@@ -110,10 +110,6 @@ namespace MLAPI.Configuration
         /// The amount of seconds to keep a lag compensation position history
         /// </summary>
         public int SecondsHistory = 5;
-        /// <summary>
-        /// Wheter or not to enable scene switching
-        /// </summary>
-        public bool EnableSceneSwitching = true;
         /// <summary>
         /// If your logic uses the NetworkedTime, this should probably be turned off. If however it's needed to maximize accuracy, this is recommended to be turned on
         /// </summary>

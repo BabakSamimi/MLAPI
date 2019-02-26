@@ -187,7 +187,7 @@ namespace MLAPI.Internal
                 }
                 else
                 {
-                    NetworkingManager.Singleton.HandleApproval(clientId, -1, true, null, null);
+                    NetworkingManager.Singleton.HandleApproval(clientId, null, true, null, null);
                 }
             }
         }
@@ -197,13 +197,8 @@ namespace MLAPI.Internal
             using (PooledBitReader reader = PooledBitReader.Get(stream))
             {
                 NetworkingManager.Singleton.LocalClientId = reader.ReadUInt32Packed();
-                uint sceneIndex = 0;
-                Guid sceneSwitchProgressGuid = new Guid();
-                if (NetworkingManager.Singleton.NetworkConfig.EnableSceneSwitching) 
-                {
-                    sceneIndex = reader.ReadUInt32Packed();
-                    sceneSwitchProgressGuid = new Guid(reader.ReadByteArray());
-                }
+                uint sceneIndex = reader.ReadUInt32Packed();
+                Guid sceneSwitchProgressGuid = new Guid(reader.ReadByteArray());
 
                 float netTime = reader.ReadSinglePacked();
                 int remoteStamp = reader.ReadInt32Packed();
@@ -212,36 +207,54 @@ namespace MLAPI.Internal
 
                 NetworkingManager.Singleton.ConnectedClients.Add(NetworkingManager.Singleton.LocalClientId, new NetworkedClient() { ClientId = NetworkingManager.Singleton.LocalClientId });
                 
-                SpawnManager.DestroySceneObjects();
+                //SpawnManager.DestroySceneObjects();
                 int objectCount = reader.ReadInt32Packed();
                 for (int i = 0; i < objectCount; i++)
                 {
                     bool isPlayerObject = reader.ReadBool();
                     uint networkId = reader.ReadUInt32Packed();
                     uint ownerId = reader.ReadUInt32Packed();
-                    ulong prefabHash = reader.ReadUInt64Packed();
-                    bool isActive = reader.ReadBool();
-                    bool destroyWithScene = reader.ReadBool();
+                    bool isSceneObject = reader.ReadBool();
 
-                    bool sceneDelayedSpawn = reader.ReadBool();
-                    uint sceneSpawnedInIndex = reader.ReadUInt32Packed();
+                    ulong prefabHash;
+                    ulong instanceId;
+                    bool softSync;
+                    
+                    if (NetworkingManager.Singleton.NetworkConfig.UsePrefabSync)
+                    {
+                        softSync = false;
+                        instanceId = 0;
+                        prefabHash = reader.ReadUInt64Packed();
+                    }
+                    else
+                    {
+                        softSync = reader.ReadBool();
 
-                    float xPos = reader.ReadSinglePacked();
-                    float yPos = reader.ReadSinglePacked();
-                    float zPos = reader.ReadSinglePacked();
+                        if (softSync)
+                        {
+                            instanceId = reader.ReadUInt64Packed();
+                            prefabHash = 0;
+                        }
+                        else
+                        {
+                            prefabHash = reader.ReadUInt64Packed();
+                            instanceId = 0;
+                        }
+                    }
 
-                    float xRot = reader.ReadSinglePacked();
-                    float yRot = reader.ReadSinglePacked();
-                    float zRot = reader.ReadSinglePacked();
+                    Vector3 pos = new Vector3(reader.ReadSinglePacked(), reader.ReadSinglePacked(), reader.ReadSinglePacked());
+                    Quaternion rot = Quaternion.Euler(reader.ReadSinglePacked(), reader.ReadSinglePacked(), reader.ReadSinglePacked());
 
+                    /*
                     NetworkedObject netObject = SpawnManager.CreateSpawnedObject(SpawnManager.GetNetworkedPrefabIndexOfHash(prefabHash), networkId, ownerId, isPlayerObject,
                         sceneSpawnedInIndex, sceneDelayedSpawn, destroyWithScene, new Vector3(xPos, yPos, zPos), Quaternion.Euler(xRot, yRot, zRot), isActive, stream, false, 0, true);
+                        */
+
+                    NetworkedObject netObject = SpawnManager.CreateLocalNetworkedObject(softSync, instanceId, prefabHash, pos, rot);
+                    SpawnManager.SpawnNetworkedObjectLocally(netObject, networkId, isSceneObject, isPlayerObject, ownerId, stream, false, 0, true);
                 }
 
-                if (NetworkingManager.Singleton.NetworkConfig.EnableSceneSwitching)
-                {
-                    NetworkSceneManager.OnSceneSwitch(sceneIndex, sceneSwitchProgressGuid);
-                }
+                NetworkSceneManager.OnSceneSwitch(sceneIndex, sceneSwitchProgressGuid);
 
                 NetworkingManager.Singleton.IsConnectedClient = true;
                 if (NetworkingManager.Singleton.OnClientConnectedCallback != null)
@@ -256,25 +269,47 @@ namespace MLAPI.Internal
                 bool isPlayerObject = reader.ReadBool();
                 uint networkId = reader.ReadUInt32Packed();
                 uint ownerId = reader.ReadUInt32Packed();
-                ulong prefabHash = reader.ReadUInt64Packed();
+                bool isSceneObject = reader.ReadBool();
+                
+                ulong prefabHash;
+                ulong instanceId;
+                bool softSync;
+                    
+                if (NetworkingManager.Singleton.NetworkConfig.UsePrefabSync)
+                {
+                    softSync = false;
+                    instanceId = 0;
+                    prefabHash = reader.ReadUInt64Packed();
+                }
+                else
+                {
+                    softSync = reader.ReadBool();
 
-                bool destroyWithScene = reader.ReadBool();
-                bool sceneDelayedSpawn = reader.ReadBool();
-                uint sceneSpawnedInIndex = reader.ReadUInt32Packed();
+                    if (softSync)
+                    {
+                        instanceId = reader.ReadUInt64Packed();
+                        prefabHash = 0;
+                    }
+                    else
+                    {
+                        prefabHash = reader.ReadUInt64Packed();
+                        instanceId = 0;
+                    }
+                }
 
-                float xPos = reader.ReadSinglePacked();
-                float yPos = reader.ReadSinglePacked();
-                float zPos = reader.ReadSinglePacked();
-
-                float xRot = reader.ReadSinglePacked();
-                float yRot = reader.ReadSinglePacked();
-                float zRot = reader.ReadSinglePacked();
+                Vector3 pos = new Vector3(reader.ReadSinglePacked(), reader.ReadSinglePacked(), reader.ReadSinglePacked());
+                Quaternion rot = Quaternion.Euler(reader.ReadSinglePacked(), reader.ReadSinglePacked(), reader.ReadSinglePacked());
 
                 bool hasPayload = reader.ReadBool();
                 int payLoadLength = hasPayload ? reader.ReadInt32Packed() : 0;
+                
+                NetworkedObject netObject = SpawnManager.CreateLocalNetworkedObject(softSync, instanceId, prefabHash, pos, rot);
+                SpawnManager.SpawnNetworkedObjectLocally(netObject, networkId, isSceneObject, isPlayerObject, ownerId, stream, hasPayload, payLoadLength, true);
 
+                /*
                 NetworkedObject netObject = SpawnManager.CreateSpawnedObject(SpawnManager.GetNetworkedPrefabIndexOfHash(prefabHash), networkId, ownerId, isPlayerObject,
                     sceneSpawnedInIndex, sceneDelayedSpawn, destroyWithScene, new Vector3(xPos, yPos, zPos), Quaternion.Euler(xRot, yRot, zRot), true, stream, hasPayload, payLoadLength, true);
+                    */
             }
         }
 
@@ -335,22 +370,44 @@ namespace MLAPI.Internal
                     bool isPlayerObject = reader.ReadBool();
                     uint networkId = reader.ReadUInt32Packed();
                     uint ownerId = reader.ReadUInt32Packed();
-                    ulong prefabHash = reader.ReadUInt64Packed();
+                    bool isSceneObject = reader.ReadBool();
 
-                    bool destroyWithScene = reader.ReadBool();
-                    bool sceneDelayedSpawn = reader.ReadBool();
-                    uint sceneSpawnedInIndex = reader.ReadUInt32Packed();
-
-                    float xPos = reader.ReadSinglePacked();
-                    float yPos = reader.ReadSinglePacked();
-                    float zPos = reader.ReadSinglePacked();
-
-                    float xRot = reader.ReadSinglePacked();
-                    float yRot = reader.ReadSinglePacked();
-                    float zRot = reader.ReadSinglePacked();
+                    ulong prefabHash;
+                    ulong instanceId;
+                    bool softSync;
                     
+                    if (NetworkingManager.Singleton.NetworkConfig.UsePrefabSync)
+                    {
+                        softSync = false;
+                        instanceId = 0;
+                        prefabHash = reader.ReadUInt64Packed();
+                    }
+                    else
+                    {
+                        softSync = reader.ReadBool();
+
+                        if (softSync)
+                        {
+                            instanceId = reader.ReadUInt64Packed();
+                            prefabHash = 0;
+                        }
+                        else
+                        {
+                            prefabHash = reader.ReadUInt64Packed();
+                            instanceId = 0;
+                        }
+                    }
+                    
+                    Vector3 pos = new Vector3(reader.ReadSinglePacked(), reader.ReadSinglePacked(), reader.ReadSinglePacked());
+                    Quaternion rot = Quaternion.Euler(reader.ReadSinglePacked(), reader.ReadSinglePacked(), reader.ReadSinglePacked());
+                    
+                    /*
                     NetworkedObject netObject = SpawnManager.CreateSpawnedObject(SpawnManager.GetNetworkedPrefabIndexOfHash(prefabHash), networkId, ownerId, isPlayerObject,
                         sceneSpawnedInIndex, sceneDelayedSpawn, destroyWithScene, new Vector3(xPos, yPos, zPos), Quaternion.Euler(xRot, yRot, zRot), true, stream, false, 0, true);
+                        */
+                    
+                    NetworkedObject netObject = SpawnManager.CreateLocalNetworkedObject(softSync, instanceId, prefabHash, pos, rot);
+                    SpawnManager.SpawnNetworkedObjectLocally(netObject, networkId, isSceneObject, isPlayerObject, ownerId, stream, false, 0, true);
                 }
             }
         }
@@ -384,10 +441,6 @@ namespace MLAPI.Internal
                     }
                     NetworkedBehaviour.HandleNetworkedVarDeltas(instance.networkedVarFields, stream, clientId, instance);
                 }
-                else if (SpawnManager.PendingSpawnObjects.ContainsKey(netId))
-                {
-                    NetworkedBehaviour.HandleNetworkedVarDeltas(SpawnManager.PendingSpawnObjects[netId].GetDummyNetworkedVarListAtOrderIndex(orderIndex), stream, clientId, null);
-                }
                 else
                 {
                     if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("NetworkedVar message recieved for a non existant object with id: " + netId);
@@ -412,10 +465,6 @@ namespace MLAPI.Internal
                         return;
                     }
                     NetworkedBehaviour.HandleNetworkedVarUpdate(instance.networkedVarFields, stream, clientId, instance);
-                }
-                else if (SpawnManager.PendingSpawnObjects.ContainsKey(netId))
-                {
-                    NetworkedBehaviour.HandleNetworkedVarUpdate(SpawnManager.PendingSpawnObjects[netId].GetDummyNetworkedVarListAtOrderIndex(orderIndex), stream, clientId, null);
                 }
                 else
                 {
