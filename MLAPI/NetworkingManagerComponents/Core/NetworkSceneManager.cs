@@ -14,6 +14,7 @@ namespace MLAPI.Components
     /// </summary>
     public static class NetworkSceneManager
     {
+        internal static readonly Dictionary<ulong, uint> pendingSceneNetworkIdLookup = new Dictionary<ulong, uint>();
         internal static readonly HashSet<string> registeredSceneNames = new HashSet<string>();
         internal static readonly Dictionary<string, uint> sceneNameToIndex = new Dictionary<string, uint>();
         internal static readonly Dictionary<uint, string> sceneIndexToString = new Dictionary<uint, string>();
@@ -24,11 +25,11 @@ namespace MLAPI.Components
         internal static uint currentSceneIndex = 0;
         internal static Guid currentSceneSwitchProgressGuid = new Guid();
 
-        internal static void SetCurrentSceneIndex ()
+        internal static void SetCurrentSceneIndex()
         {
             if(!sceneNameToIndex.ContainsKey(SceneManager.GetActiveScene().name))
             {
-                if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("Scene switching is enabled but the current scene (" + SceneManager.GetActiveScene().name + ") is not regisered as a network scene.");
+                if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("The current scene (" + SceneManager.GetActiveScene().name + ") is not regisered as a network scene.");
                 return;
             }
             currentSceneIndex = sceneNameToIndex[SceneManager.GetActiveScene().name];
@@ -43,12 +44,7 @@ namespace MLAPI.Components
         /// <param name="sceneName">The name of the scene to switch to</param>
         public static SceneSwitchProgress SwitchScene(string sceneName)
         {
-            if(!NetworkingManager.Singleton.NetworkConfig.EnableSceneSwitching)
-            {
-                if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("Scene switching is not enabled");
-                return null;
-            }
-            else if (isSwitching)
+            if (isSwitching)
             {
                 if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("Scene switch already in progress");
                 return null;
@@ -58,7 +54,7 @@ namespace MLAPI.Components
                 if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("The scene " + sceneName + " is not registered as a switchable scene.");
                 return null;
             }
-            SpawnManager.DestroySceneObjects(); //Destroy current scene objects before switching.
+            SpawnManager.ServerDestroySpawnedSceneObjects(); //Destroy current scene objects before switching.
             currentSceneIndex = sceneNameToIndex[sceneName];
             isSwitching = true;
             lastScene = SceneManager.GetActiveScene();
@@ -83,6 +79,7 @@ namespace MLAPI.Components
                     InternalMessageHandler.Send(MLAPIConstants.MLAPI_SWITCH_SCENE, "MLAPI_INTERNAL", stream, SecuritySendFlags.None, null);
                 }
             }
+            
             return switchSceneProgress;
         }
 
@@ -120,13 +117,15 @@ namespace MLAPI.Components
             SceneManager.SetActiveScene(nextScene);
             
             List<NetworkedObject> objectsToKeep = SpawnManager.SpawnedObjectsList;
+            
             for (int i = 0; i < objectsToKeep.Count; i++)
             {
                 //In case an object has been set as a child of another object it has to be unchilded in order to be moved from one scene to another.
-                if(objectsToKeep[i].gameObject.transform.parent != null)
+                if (objectsToKeep[i].gameObject.transform.parent != null)
                 {
                     objectsToKeep[i].gameObject.transform.parent = null;
                 }
+                
                 SceneManager.MoveGameObjectToScene(objectsToKeep[i].gameObject, nextScene);
             }
 
