@@ -19,9 +19,9 @@ namespace MLAPI.Components
         /// <summary>
         /// The currently spawned objects
         /// </summary>
-        public static readonly Dictionary<uint, NetworkedObject> SpawnedObjects = new Dictionary<uint, NetworkedObject>();
+        public static readonly Dictionary<ulong, NetworkedObject> SpawnedObjects = new Dictionary<ulong, NetworkedObject>();
         // Pending SoftSync objects
-        internal static readonly Dictionary<ulong, NetworkedObject> PendingSoftSyncObjects = new Dictionary<ulong, NetworkedObject>();
+        internal static readonly Dictionary<ulong, NetworkedObject> pendingSoftSyncObjects = new Dictionary<ulong, NetworkedObject>();
         /// <summary>
         /// A list of the spawned objects
         /// </summary>
@@ -93,9 +93,9 @@ namespace MLAPI.Components
             customDestroyHandlers.Remove(prefabHash);
         }
         
-        internal static readonly Stack<uint> releasedNetworkObjectIds = new Stack<uint>();
-        private static uint networkObjectIdCounter;
-        internal static uint GetNetworkObjectId()
+        internal static readonly Stack<ulong> releasedNetworkObjectIds = new Stack<ulong>();
+        private static ulong networkObjectIdCounter;
+        internal static ulong GetNetworkObjectId()
         {
             if (releasedNetworkObjectIds.Count > 0)
             {
@@ -131,23 +131,7 @@ namespace MLAPI.Components
         {
             for (int i = 0; i < NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs.Count; i++)
             {
-                if (NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs[i].hash == hash)
-                    return i;
-            }
-
-            return -1;
-        }
-
-        /// <summary>
-        /// Gets the prefab index of a given prefab name
-        /// </summary>
-        /// <param name="name">The name of the prefab</param>
-        /// <returns>The index of the prefab</returns>
-        public static int GetNetworkedPrefabIndexOfName(string name)
-        {
-            for (int i = 0; i < NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs.Count; i++)
-            {
-                if (NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs[i].name == name)
+                if (NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs[i].Hash == hash)
                     return i;
             }
 
@@ -174,7 +158,7 @@ namespace MLAPI.Components
             return NetworkingManager.Singleton.ConnectedClients[clientId].PlayerObject;
         }
 
-        internal static void RemoveOwnership(uint netId)
+        internal static void RemoveOwnership(ulong networkId)
         {
             if (!NetworkingManager.Singleton.IsServer)
             {
@@ -182,10 +166,10 @@ namespace MLAPI.Components
                 return;
             }
             
-            NetworkedObject netObject = SpawnManager.SpawnedObjects[netId];
+            NetworkedObject netObject = SpawnManager.SpawnedObjects[networkId];
             for (int i = NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects.Count - 1; i > -1; i--)
             {
-                if (NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects[i].NetworkId == netId)
+                if (NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects[i].NetworkId == networkId)
                     NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects.RemoveAt(i);
             }
 			netObject.OwnerClientId = NetworkingManager.Singleton.ServerClientId;
@@ -194,7 +178,7 @@ namespace MLAPI.Components
             {
                 using (PooledBitWriter writer = PooledBitWriter.Get(stream))
                 {
-                    writer.WriteUInt32Packed(netId);
+                    writer.WriteUInt64Packed(networkId);
                     writer.WriteUInt32Packed(netObject.OwnerClientId);
 
                     InternalMessageHandler.Send(MLAPIConstants.MLAPI_CHANGE_OWNER, "MLAPI_INTERNAL", stream, SecuritySendFlags.None, netObject);
@@ -202,17 +186,17 @@ namespace MLAPI.Components
             }
         }
 
-        internal static void ChangeOwnership(uint netId, uint clientId)
+        internal static void ChangeOwnership(ulong networkId, uint clientId)
         {
             if (!NetworkingManager.Singleton.IsServer)
             {
                 if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("You can only change ownership from Server");
                 return;
             }
-            NetworkedObject netObject = SpawnManager.SpawnedObjects[netId];
+            NetworkedObject netObject = SpawnManager.SpawnedObjects[networkId];
             for (int i = NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects.Count - 1; i > -1; i--)
             {
-                if (NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects[i].NetworkId == netId)
+                if (NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects[i].NetworkId == networkId)
                     NetworkingManager.Singleton.ConnectedClients[netObject.OwnerClientId].OwnedObjects.RemoveAt(i);
             }
             NetworkingManager.Singleton.ConnectedClients[clientId].OwnedObjects.Add(netObject);
@@ -222,7 +206,7 @@ namespace MLAPI.Components
             {
                 using (PooledBitWriter writer = PooledBitWriter.Get(stream))
                 {
-                    writer.WriteUInt32Packed(netId);
+                    writer.WriteUInt64Packed(networkId);
                     writer.WriteUInt32Packed(clientId);
 
                     InternalMessageHandler.Send(MLAPIConstants.MLAPI_CHANGE_OWNER, "MLAPI_INTERNAL", stream, SecuritySendFlags.None, netObject);
@@ -299,29 +283,29 @@ namespace MLAPI.Components
                 }
                 else
                 {
-                    GameObject prefab = NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs[GetNetworkedPrefabIndexOfHash(prefabHash)].prefab;
+                    GameObject prefab = NetworkingManager.Singleton.NetworkConfig.NetworkedPrefabs[GetNetworkedPrefabIndexOfHash(prefabHash)].Prefab;
                     return ((position == null && rotation == null) ? MonoBehaviour.Instantiate(prefab) : MonoBehaviour.Instantiate(prefab, position.GetValueOrDefault(Vector3.zero), rotation.GetValueOrDefault(Quaternion.identity))).GetComponent<NetworkedObject>();
                 }
             }
             else
             {
                 // SoftSync them by mapping
-                if (!PendingSoftSyncObjects.ContainsKey(instanceId))
+                if (!pendingSoftSyncObjects.ContainsKey(instanceId))
                 {   
                     // TODO: Fix this message
                     if (LogHelper.CurrentLogLevel <= LogLevel.Error) LogHelper.LogError("Cannot find pending soft sync object. Is the projects the same?");
                     return null;
                 }
 
-                NetworkedObject netObject = PendingSoftSyncObjects[instanceId];
-                PendingSoftSyncObjects.Remove(instanceId);
+                NetworkedObject netObject = pendingSoftSyncObjects[instanceId];
+                pendingSoftSyncObjects.Remove(instanceId);
 
                 return netObject;
             }
         }
 
         // Ran on both server and client
-        internal static void SpawnNetworkedObjectLocally(NetworkedObject netObject, uint networkId, bool sceneObject, bool playerObject, uint ownerClientId, Stream dataStream, bool readPayload, int payloadLength, bool readNetworkedVar)
+        internal static void SpawnNetworkedObjectLocally(NetworkedObject netObject, ulong networkId, bool sceneObject, bool playerObject, uint ownerClientId, Stream dataStream, bool readPayload, int payloadLength, bool readNetworkedVar)
         {
             if (netObject == null)
             {
@@ -783,6 +767,33 @@ namespace MLAPI.Components
             }
         }
 
+        internal static void DestroyNonSceneObjects()
+        {
+            // TODO: Implement
+            // Used for shutdown only I think
+        }
+
+        internal static void DestroySceneObjects()
+        {
+            NetworkedObject[] netObjects = MonoBehaviour.FindObjectsOfType<NetworkedObject>();
+            
+            for (int i = 0; i < netObjects.Length; i++)
+            {
+                if (netObjects[i].IsSceneObject == null || netObjects[i].IsSceneObject.Value == true)
+                {
+                    if (customDestroyHandlers.ContainsKey(netObjects[i].PrefabHash))
+                    {
+                        customDestroyHandlers[netObjects[i].PrefabHash](netObjects[i]);
+                        SpawnManager.OnDestroyObject(netObjects[i].NetworkId, false);
+                    }
+                    else
+                    {
+                        MonoBehaviour.Destroy(netObjects[i].gameObject);
+                    }
+                }
+            }
+        }
+        
         internal static void ServerSpawnNewSceneObjectsSweep()
         {
             NetworkedObject[] networkedObjects = MonoBehaviour.FindObjectsOfType<NetworkedObject>();
@@ -792,11 +803,13 @@ namespace MLAPI.Components
                 if (networkedObjects[i].IsSceneObject == null)
                 {
                     SpawnNetworkedObjectLocally(networkedObjects[i], GetNetworkObjectId(), true, false, NetworkingManager.Singleton.ServerClientId, null, false, 0, false);
+
+                    SendSpawnCallForObject(networkedObjects[i]);
                 }
             }
         }
         
-        internal static void OnDestroyObject(uint networkId, bool destroyGameObject)
+        internal static void OnDestroyObject(ulong networkId, bool destroyGameObject)
         {
             if (NetworkingManager.Singleton == null)
                 return;
@@ -820,13 +833,14 @@ namespace MLAPI.Components
             if (NetworkingManager.Singleton != null && NetworkingManager.Singleton.IsServer)
             {
                 releasedNetworkObjectIds.Push(networkId);
+                
                 if (SpawnedObjects[networkId] != null)
                 {
                     using (PooledBitStream stream = PooledBitStream.Get())
                     {
                         using (PooledBitWriter writer = PooledBitWriter.Get(stream))
                         {
-                            writer.WriteUInt32Packed(networkId);
+                            writer.WriteUInt64Packed(networkId);
 
                             InternalMessageHandler.Send(MLAPIConstants.MLAPI_DESTROY_OBJECT, "MLAPI_INTERNAL", stream, SecuritySendFlags.None, SpawnedObjects[networkId]);
                         }
@@ -835,6 +849,7 @@ namespace MLAPI.Components
             }
 
             GameObject go = SpawnedObjects[networkId].gameObject;
+            
             if (destroyGameObject && go != null)
             {
                 if (customDestroyHandlers.ContainsKey(SpawnedObjects[networkId].PrefabHash))
@@ -849,6 +864,7 @@ namespace MLAPI.Components
             }
             
             SpawnedObjects.Remove(networkId);
+            
             for (int i = SpawnedObjectsList.Count - 1; i > -1; i--)
             {
                 if (SpawnedObjectsList[i].NetworkId == networkId)

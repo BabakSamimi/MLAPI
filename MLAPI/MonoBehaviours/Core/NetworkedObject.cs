@@ -24,7 +24,7 @@ namespace MLAPI
         /// <summary>
         /// Gets the unique ID of this object that is synced across the network
         /// </summary>
-        public uint NetworkId { get; internal set; }
+        public ulong NetworkId { get; internal set; }
         /// <summary>
         /// Gets the clientId of the owner of this NetworkedObject
         /// </summary>
@@ -49,6 +49,7 @@ namespace MLAPI
         
         public ulong PrefabInstanceId;
         public ulong PrefabHash;
+        public string PrefabHashGenerator;
         [Obsolete("Use IsPlayerObject instead", false)]
         public bool isPlayerObject => IsPlayerObject;
         /// <summary>
