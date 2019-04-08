@@ -131,8 +131,11 @@ namespace MLAPI
         private void OnDestroy()
         {
             NetworkedObject.NetworkedBehaviours.Remove(this); // O(n)
-            CachedClientRpcs.Remove(this);
-            CachedServerRpcs.Remove(this);
+            if(RpcsAreCached)
+            {
+                CachedClientRpcs.Clear();
+                CachedServerRpcs.Clear();
+            }
             OnDestroyed();
         }
 
@@ -156,7 +159,9 @@ namespace MLAPI
 
         internal void InternalNetworkStart()
         {
-            CacheAttributes();
+            if(RpcsAreCached)
+                CacheAttributes();
+
             WarnUnityReflectionMethodUse();
             NetworkedVarInit();
         }
@@ -496,8 +501,8 @@ namespace MLAPI
         #endregion
 
         #region MESSAGING_SYSTEM
-        private readonly Dictionary<NetworkedBehaviour, Dictionary<ulong, ClientRPC>> CachedClientRpcs = new Dictionary<NetworkedBehaviour, Dictionary<ulong, ClientRPC>>();
-        private readonly Dictionary<NetworkedBehaviour, Dictionary<ulong, ServerRPC>> CachedServerRpcs = new Dictionary<NetworkedBehaviour, Dictionary<ulong, ServerRPC>>();
+        private static readonly Dictionary<ulong, ClientRPC> CachedClientRpcs = new Dictionary<ulong, ClientRPC>();
+        private static readonly Dictionary<ulong, ServerRPC> CachedServerRpcs = new Dictionary<ulong, ServerRPC>();
         private static readonly Dictionary<Type, MethodInfo[]> Methods = new Dictionary<Type, MethodInfo[]>();
         private static readonly Dictionary<ulong, string> HashResults = new Dictionary<ulong, string>();
         private static readonly Dictionary<MethodInfo, ulong> methodInfoHashTable = new Dictionary<MethodInfo, ulong>();
@@ -573,9 +578,6 @@ namespace MLAPI
         private void CacheAttributes()
         {
             Type type = GetType();
-            
-            CachedClientRpcs.Add(this, new Dictionary<ulong, ClientRPC>());
-            CachedServerRpcs.Add(this, new Dictionary<ulong, ServerRPC>());
 
             MethodInfo[] methods;
             if (Methods.ContainsKey(type)) methods = Methods[type];
@@ -621,7 +623,7 @@ namespace MLAPI
                     {
                         HashResults.Add(nameHash, methods[i].Name);
                     }
-                    CachedServerRpcs[this].Add(nameHash, attributes[0]);
+                    CachedServerRpcs.Add(nameHash, attributes[0]);
 
 
                     if (methods[i].GetParameters().Length > 0)
@@ -640,7 +642,7 @@ namespace MLAPI
                         {
                             HashResults.Add(methodHash, hashableMethodSignature);
                         }
-                        CachedServerRpcs[this].Add(methodHash, attributes[0]);   
+                        CachedServerRpcs.Add(methodHash, attributes[0]);   
                     }
                 }
                 
@@ -679,7 +681,7 @@ namespace MLAPI
                     {
                         HashResults.Add(nameHash, methods[i].Name);
                     }
-                    CachedClientRpcs[this].Add(nameHash, attributes[0]);
+                    CachedClientRpcs.Add(nameHash, attributes[0]);
 
 
                     if (methods[i].GetParameters().Length > 0)
@@ -698,15 +700,20 @@ namespace MLAPI
                         {
                             HashResults.Add(methodHash, hashableMethodSignature);
                         }
-                        CachedClientRpcs[this].Add(methodHash, attributes[0]);
+                        CachedClientRpcs.Add(methodHash, attributes[0]);
                     }
                 }     
             }
+
+
+            RpcsAreCached = true;
         }
+
+        private bool RpcsAreCached = false;
 
         internal object OnRemoteServerRPC(ulong hash, ulong senderClientId, Stream stream)
         {
-            if (!CachedServerRpcs.ContainsKey(this) || !CachedServerRpcs[this].ContainsKey(hash))
+            if (!CachedServerRpcs.ContainsKey(hash))
             {
                 if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("ServerRPC request method not found");
                 return null;
@@ -717,7 +724,7 @@ namespace MLAPI
         
         internal object OnRemoteClientRPC(ulong hash, ulong senderClientId, Stream stream)
         {
-            if (!CachedClientRpcs.ContainsKey(this) || !CachedClientRpcs[this].ContainsKey(hash))
+            if (!CachedClientRpcs.ContainsKey(hash))
             {
                 if (LogHelper.CurrentLogLevel <= LogLevel.Normal) LogHelper.LogWarning("ClientRPC request method not found");
                 return null;
@@ -728,10 +735,10 @@ namespace MLAPI
 
         private object InvokeServerRPCLocal(ulong hash, ulong senderClientId, Stream stream)
         {
-            if (!CachedServerRpcs.ContainsKey(this) || !CachedServerRpcs[this].ContainsKey(hash))
+            if (!CachedServerRpcs.ContainsKey(hash))
                 return null;
             
-            ServerRPC rpc = CachedServerRpcs[this][hash];
+            ServerRPC rpc = CachedServerRpcs[hash];
 
             if (rpc.RequireOwnership && senderClientId != OwnerClientId)
             {
@@ -785,10 +792,10 @@ namespace MLAPI
 
         private object InvokeClientRPCLocal(ulong hash, ulong senderClientId, Stream stream)
         {
-            if (!CachedClientRpcs.ContainsKey(this) || !CachedClientRpcs[this].ContainsKey(hash))
+            if (!CachedClientRpcs.ContainsKey(hash))
                 return null;
             
-            ClientRPC rpc = CachedClientRpcs[this][hash];
+            ClientRPC rpc = CachedClientRpcs[hash];
 
             if (stream.Position != 0)
             {
