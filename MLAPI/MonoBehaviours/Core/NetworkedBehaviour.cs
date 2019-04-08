@@ -131,11 +131,6 @@ namespace MLAPI
         private void OnDestroy()
         {
             NetworkedObject.NetworkedBehaviours.Remove(this); // O(n)
-            if(RpcsAreCached)
-            {
-                CachedClientRpcs.Clear();
-                CachedServerRpcs.Clear();
-            }
             OnDestroyed();
         }
 
@@ -159,8 +154,11 @@ namespace MLAPI
 
         internal void InternalNetworkStart()
         {
-            if(RpcsAreCached)
+            if(!CachedTypes.Contains(GetType()))
                 CacheAttributes();
+            else
+                SetInstanceDelegate();
+
 
             WarnUnityReflectionMethodUse();
             NetworkedVarInit();
@@ -503,6 +501,8 @@ namespace MLAPI
         #region MESSAGING_SYSTEM
         private static readonly Dictionary<ulong, ClientRPC> CachedClientRpcs = new Dictionary<ulong, ClientRPC>();
         private static readonly Dictionary<ulong, ServerRPC> CachedServerRpcs = new Dictionary<ulong, ServerRPC>();
+        private static readonly HashSet<Type> CachedTypes = new HashSet<Type>();
+
         private static readonly Dictionary<Type, MethodInfo[]> Methods = new Dictionary<Type, MethodInfo[]>();
         private static readonly Dictionary<ulong, string> HashResults = new Dictionary<ulong, string>();
         private static readonly Dictionary<MethodInfo, ulong> methodInfoHashTable = new Dictionary<MethodInfo, ulong>();
@@ -575,9 +575,26 @@ namespace MLAPI
             }
         }
 
+        private void SetInstanceDelegate()
+        {
+            foreach(var item in CachedServerRpcs.Values)
+            {
+                item.rpcDelegate = (RpcDelegate)Delegate.CreateDelegate(typeof(RpcDelegate), this, item.rpcDelegate.Method.Name);
+
+            }
+
+            foreach (var item in CachedClientRpcs.Values)
+            {
+                item.rpcDelegate = (RpcDelegate)Delegate.CreateDelegate(typeof(RpcDelegate), this, item.rpcDelegate.Method.Name);
+
+            }
+        }
+
         private void CacheAttributes()
         {
             Type type = GetType();
+
+            CachedTypes.Add(type);
 
             MethodInfo[] methods;
             if (Methods.ContainsKey(type)) methods = Methods[type];
@@ -704,13 +721,8 @@ namespace MLAPI
                     }
                 }     
             }
-
-
-            RpcsAreCached = true;
         }
-
-        private bool RpcsAreCached = false;
-
+        
         internal object OnRemoteServerRPC(ulong hash, ulong senderClientId, Stream stream)
         {
             if (!CachedServerRpcs.ContainsKey(hash))
